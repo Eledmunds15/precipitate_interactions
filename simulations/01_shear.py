@@ -240,7 +240,7 @@ def run_simulation(params: SimParams, paths: dict[str, Path], comm) -> None:
     # ===========================
     # Minimize
     # ===========================
-    lmp.cmd.fix(1, "fixgrp", "setforce", 0.0, 0.0, 0.0)
+    lmp.cmd.fix(1, "fixgrp", "setforce", "NULL", 0.0, "NULL")
 
     lmp.cmd.reset_timestep(0)
     lmp.cmd.thermo_style("custom", "step", "temp", "pe", "etotal", "pxx", "pyy", "pzz", "pxy", "pyz", "pxz", "lx", "ly", "lz")
@@ -262,6 +262,7 @@ def run_simulation(params: SimParams, paths: dict[str, Path], comm) -> None:
     # Prepare for run
     # ===========================
     lmp.cmd.log(paths["logs"] / "run.log") # Set the log path (1 log for the entire simulation)
+    lmp.cmd.reset_timestep(0)
     lmp.cmd.thermo(params.thermo_freq)
 
     lmp.cmd.thermo_style(
@@ -285,8 +286,11 @@ def run_simulation(params: SimParams, paths: dict[str, Path], comm) -> None:
     lmp.cmd.fix_modify(1, "temp", "mobtemp")
     lmp.cmd.thermo_modify("temp", "mobtemp")
 
-    lmp.cmd.fix(2, "topgrp", "setforce", 0.0, 0.0, 0.0)
-    lmp.cmd.fix(3, "botgrp", "setforce", 0.0, 0.0, 0.0)
+    # Now we must apply a strain to the others as well
+    lmp.cmd.fix("boundarynve", "fixgrp", "nve")
+
+    lmp.cmd.fix(2, "topgrp", "setforce", "NULL", 0.0, "NULL")
+    lmp.cmd.fix(3, "botgrp", "setforce", "NULL", 0.0, "NULL")
     lmp.cmd.fix(4, "precgrp", "setforce", 0.0, 0.0, 0.0)
 
     # Set velocities to 0 for fixed groups surface
@@ -300,7 +304,6 @@ def run_simulation(params: SimParams, paths: dict[str, Path], comm) -> None:
     # ===========================
     # Strain calculations
     # ===========================
-    shr_rate = params.strain_rate # the strain rate s^-1
     box_height = ymax-ymin # In angstroms
     shr_vel = params.strain_rate * box_height * 1e-12 # in Angstroms/ps
 
@@ -308,13 +311,14 @@ def run_simulation(params: SimParams, paths: dict[str, Path], comm) -> None:
     lmp.cmd.variable("rampTimestep", "equal", f"step-{params.thermo_time}") # The time into the ramping stage
     lmp.cmd.variable("rampVel", "equal", f"({shr_vel}*v_rampTimestep)/{params.ramp_time}")
 
-    ramp_velocity_variable = "${rampVel}"
-
     # ===========================
     # Ramping
     # ===========================
-    lmp.cmd.velocity("topgrp", "set", ramp_velocity_variable, 0.0, 0.0)
+    lmp.cmd.fix(2, "topgrp", "setforce", 0.0, 0.0, 0.0)
+    lmp.cmd.fix(3, "botgrp", "setforce", 0.0, 0.0, 0.0)
     
+    lmp.cmd.velocity("topgrp", "set", "v_rampVel", 0.0, 0.0)
+    lmp.cmd.velocity("botgrp", "set", 0.0, 0.0, 0.0)
     lmp.cmd.run(params.ramp_time)
 
     # ===========================

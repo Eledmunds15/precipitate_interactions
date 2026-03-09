@@ -6,21 +6,21 @@ dimension 3
 boundary p s p
 atom_style atomic
 atom_modify map yes
-read_data /home/Ethan/Projects/prec_interactions/input_TEST/Fe_E111_110_slabbed.lmp
+read_data /home/Ethan/Projects/prec_interactions/input/Fe_E111_110_slabbed.lmp
 Reading data file ...
-  orthogonal box = (0 0 0) to (299.13675 283.76902 315.96581)
+  orthogonal box = (0 0 0) to (299.13675 324.30745 351.07312)
   1 by 1 by 1 MPI processor grid
   reading atoms ...
-  2277450 atoms
-  read_data CPU = 3.419 seconds
+  2892000 atoms
+  read_data CPU = 4.018 seconds
 pair_style eam/fs
 pair_coeff * * /home/Ethan/Projects/prec_interactions/potentials/mendelev03.fs Fe Fe
 neighbor 2.0 bin
 neigh_modify delay 10 check yes
 group mobgrp type 1
-2147310 atoms in group mobgrp
+2028000 atoms in group mobgrp
 group fixgrp type 2
-130140 atoms in group fixgrp
+864000 atoms in group fixgrp
 fix 1 fixgrp setforce 0.0 0.0 0.0
 thermo_style custom step temp pe etotal pxx pyy pzz pxy pyz pxz lx ly lz
 thermo 10
@@ -32,48 +32,50 @@ Neighbor list info ...
   max neighbors/atom: 2000, page size: 100000
   master list distance cutoff = 7.3
   ghost atom cutoff = 7.3
-  binsize = 3.65, bins = 82 78 87
+  binsize = 3.65, bins = 82 89 97
   1 neighbor lists, perpetual/occasional/extra = 1 0 0
   (1) pair eam/fs, perpetual
       attributes: half, newton on
       pair build: half/bin/atomonly/newton
       stencil: half/bin/3d
       bin: standard
-Per MPI rank memory allocation (min/avg/max) = 1314 | 1314 | 1314 Mbytes
+Per MPI rank memory allocation (min/avg/max) = 1665 | 1665 | 1665 Mbytes
    Step          Temp          PotEng         TotEng          Pxx            Pyy            Pzz            Pxy            Pyz            Pxz             Lx             Ly             Lz      
-         0   0             -9364318       -9364318       -21239.705     -20355.816     -21096.654     -0.00010649064  4.3317334e-05  723.64728      299.13675      281.79885      315.96581    
-         1   0             -9364621.8     -9364621.8     -21031.809     -20276.766     -21038.057     -0.00010764064  4.3388042e-05  620.30602      299.13675      281.79885      315.96581    
-Loop time of 4.60456 on 1 procs for 1 steps with 2277450 atoms
+         0   0             -11894662      -11894662      -21167.203     -20392.534     -21040.184     -9.3092459e-05  3.7883754e-05  632.62258      299.13675      322.34539      351.07312    
+         1   0             -11895007      -11895007      -20952.388     -20228.309     -20949.199     -9.416407e-05   3.8001314e-05  532.86388      299.13675      322.34539      351.07312    
+Loop time of 4.93961 on 1 procs for 1 steps with 2892000 atoms
 
-99.8% CPU use with 1 MPI tasks x 1 OpenMP threads
+100.0% CPU use with 1 MPI tasks x 1 OpenMP threads
 
 Minimization stats:
   Stopping criterion = energy tolerance
   Energy initial, next-to-last, final = 
-     -9364318.01352954  -9364318.01352954  -9364621.80895611
-  Force two-norm initial, final = 72.28313 60.091993
-  Force max component initial, final = 0.43442215 0.30096384
-  Final line search alpha, max atom move = 0.23019084 0.06927912
+     -11894661.6229757  -11894661.6229757  -11895006.6060373
+  Force two-norm initial, final = 77.033085 63.882317
+  Force max component initial, final = 0.43442215 0.30055366
+  Final line search alpha, max atom move = 0.23019084 0.069184699
   Iterations, force evaluations = 1 2
 
 MPI task timing breakdown:
 Section |  min time  |  avg time  |  max time  |%varavg| %total
 ---------------------------------------------------------------
-Pair    | 4.5041     | 4.5041     | 4.5041     |   0.0 | 97.82
+Pair    | 4.8182     | 4.8182     | 4.8182     |   0.0 | 97.54
 Neigh   | 0          | 0          | 0          |   0.0 |  0.00
-Comm    | 0.0086684  | 0.0086684  | 0.0086684  |   0.0 |  0.19
+Comm    | 0.0091667  | 0.0091667  | 0.0091667  |   0.0 |  0.19
 Output  | 0          | 0          | 0          |   0.0 |  0.00
-Modify  | 0.0032894  | 0.0032894  | 0.0032894  |   0.0 |  0.07
-Other   |            | 0.08845    |            |       |  1.92
+Modify  | 0.0071625  | 0.0071625  | 0.0071625  |   0.0 |  0.15
+Other   |            | 0.1051     |            |       |  2.13
 
-Nlocal:    2.27745e+06 ave 2.27745e+06 max 2.27745e+06 min
+Nlocal:      2.892e+06 ave   2.892e+06 max   2.892e+06 min
 Histogram: 1 0 0 0 0 0 0 0 0 0
-Nghost:         219660 ave      219660 max      219660 min
+Nghost:         265440 ave      265440 max      265440 min
 Histogram: 1 0 0 0 0 0 0 0 0 0
-Neighs:    1.53496e+08 ave 1.53496e+08 max 1.53496e+08 min
+Neighs:    1.95133e+08 ave 1.95133e+08 max 1.95133e+08 min
 Histogram: 1 0 0 0 0 0 0 0 0 0
 
-Total # of neighbors = 1.5349599e+08
-Ave neighs/atom = 67.398182
+Total # of neighbors = 1.951331e+08
+Ave neighs/atom = 67.473409
 Neighbor list builds = 0
-Dangerous builds = 0
+Dangerous builds = 0write_data /home/Ethan/Projects/prec_interactions/input/Fe_E111_110_min.lmp nocoeff
+System init for write_data ...
+Total wall time: 0:03:45

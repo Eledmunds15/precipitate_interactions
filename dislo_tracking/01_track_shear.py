@@ -23,7 +23,7 @@ def process_dump(input_file, dirs):
     
     # 1. Setup Modifiers
     dxa_mod = DislocationAnalysisModifier(input_crystal_structure=DislocationAnalysisModifier.Lattice.BCC)
-    exp_mod = ExpressionSelectionModifier(expression="Cluster == 1 || ParticleType == 2 || ParticleType == 3") 
+    exp_mod = ExpressionSelectionModifier(expression="(Cluster == 1 || ParticleType == 2 || ParticleType == 3) && ParticleType != 4") 
     del_mod = DeleteSelectedModifier()
 
     pipeline.modifiers.append(dxa_mod)
@@ -37,7 +37,7 @@ def process_dump(input_file, dirs):
     # 2. Exports
     export_file(pipeline, str(dirs["atoms"] / f"dxa_atoms_{timestep}.dump"), 
                 "lammps/dump", columns=["Particle Identifier", "Particle Type", "Position", "Velocity", "Force", "Stress Tensor", "c_pe", "c_ke"])
-    export_file(pipeline, str(dirs["raw"] / f"dxa_{timestep}.ca"), "ca")
+    export_file(pipeline, str(dirs["raw"] / f"dxa_{timestep}.ca"), "ca", export_mesh=False)
 
     # 3. Standardized Grid (Z-Resampling)
     stats = {"timestep": timestep, "length": 0.0}
@@ -65,44 +65,76 @@ def process_dump(input_file, dirs):
 
     return stats
 
-def process_log(sim_path, output_dir):
-    log_file = os.path.join(sim_path, "log.lammps")
-    if not os.path.exists(log_file):
+def process_log(sim_path, output_dir, log_filename="run.log"):
+    """
+    Robustly extracts multi-line wrapped LAMMPS thermo data from run.log.
+    """
+    log_file = Path(sim_path) / "logs" / log_filename
+    if not log_file.exists():
         print(f"  [LogProcessor] Error: {log_file} not found.", flush=True)
         return
 
-    all_data_frames = []
     with open(log_file, 'r') as f:
-        lines = f.readlines()
+        content = f.read()
 
-    is_capturing = False
-    current_block = []
+    # 1. Identify the header and the number of columns
+    # We look for the line starting with 'Step' and ending with the last specific column
+    header_pattern = r"(Step\s+Temp\s+PotEng.*?c_mobstressXZ\s*)\n"
+    header_match = re.search(header_pattern, content)
+    
+    if not header_match:
+        print(f"  [LogProcessor] Error: Could not find valid thermo header in {log_filename}")
+        return
 
-    for line in lines:
-        clean_line = line.strip()
-        if clean_line.startswith("Step"):
-            is_capturing = True
-            current_block = [clean_line]
-            continue
+    header_str = header_match.group(1)
+    columns = header_str.split()
+    num_cols = len(columns)
+
+    # 2. Extract the raw data block between header and the 'Loop' or 'ERROR'
+    # This captures everything until LAMMPS finishes the run block
+    data_block_pattern = re.escape(header_str) + r"(.*?)(?=Loop|ERROR|$)"
+    data_match = re.search(data_block_pattern, content, re.DOTALL)
+    
+    if not data_match:
+        print(f"  [LogProcessor] Error: Could not find data block after header.")
+        return
+
+    raw_data = data_match.group(1)
+
+    # 3. Clean and parse multi-line data
+    # We split by all whitespace to get a flat list of all numeric strings.
+    # This ignores physical line breaks and treats the data as one long sequence.
+    all_values = raw_data.split()
+    
+    # Filter out common non-numeric artifacts like WARNINGs that might be in the block
+    numeric_values = []
+    for val in all_values:
+        try:
+            float(val)
+            numeric_values.append(val)
+        except ValueError:
+            continue # Skip "WARNING:", "Temperature", etc.
+
+    # 4. Reshape the flat list into rows based on the column count
+    data_rows = [numeric_values[i:i + num_cols] for i in range(0, len(numeric_values), num_cols)]
+
+    # 5. Build DataFrame and Save
+    if data_rows:
+        final_df = pd.DataFrame(data_rows, columns=columns)
+        # Convert all columns to numeric (floats/ints)
+        final_df = final_df.apply(pd.to_numeric, errors='coerce')
         
-        if is_capturing:
-            if not clean_line or clean_line.startswith("Loop") or clean_line.startswith("ERROR"):
-                if current_block:
-                    df_block = pd.read_csv(io.StringIO("\n".join(current_block)), sep=r'\s+')
-                    all_data_frames.append(df_block)
-                is_capturing = False
-                current_block = []
-            else:
-                current_block.append(clean_line)
-
-    if all_data_frames:
-        final_df = pd.concat(all_data_frames, ignore_index=True)
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, "log_scalars.csv")
-        final_df.to_csv(output_file, index=False)
-        print(f"  [LogProcessor] Successfully processed {len(all_data_frames)} blocks into {output_file}", flush=True)
+        # Drop any rows that didn't have enough columns (incomplete final step)
+        final_df = final_df.dropna(subset=['Step'])
+        
+        # Deduplicate based on Step (keeps the last occurrence if a run was restarted)
+        final_df = final_df.drop_duplicates(subset=['Step'], keep='last')
+        
+        output_path = Path(output_dir) / "log_scalars.csv"
+        final_df.to_csv(output_path, index=False)
+        print(f"  [LogProcessor] Processed {len(final_df)} timesteps into log_scalars.csv", flush=True)
     else:
-        print("  [LogProcessor] No thermodynamic data blocks found.", flush=True)
+        print(f"  [LogProcessor] Warning: No valid data rows found.")
 
 def main():
     args = parse_args()
@@ -112,13 +144,12 @@ def main():
 
     # 1. Setup Paths
     raw_sim_path = Path(args.input).resolve()
-    processed_base = raw_sim_path.parents[1] / "processed" / raw_sim_path.name
     
     dirs = {
-        "raw": processed_base / "dxa_raw",
-        "atoms": processed_base / "dxa_atoms",
-        "verts": processed_base / "dxa_verts",
-        "analysis": processed_base / "analysis"
+        "raw": raw_sim_path / "dxa_raw",
+        "atoms": raw_sim_path / "dxa_atoms",
+        "verts": raw_sim_path / "dxa_verts",
+        "analysis": raw_sim_path / "analysis"
     }
 
     # 2. Rank 0: Initialization
@@ -183,7 +214,7 @@ def main():
         print(f"\n{'='*70}", flush=True)
         print(f"PROCESSING COMPLETE", flush=True)
         print(f"Total Wall Time: {total_time:.2f} seconds", flush=True)
-        print(f"Results stored in: {processed_base}", flush=True)
+        print(f"Results stored in: {dirs}", flush=True)
         print(f"{'='*70}\n", flush=True)
 
     if rank != 0:
