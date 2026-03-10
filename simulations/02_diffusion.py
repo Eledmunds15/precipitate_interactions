@@ -62,12 +62,12 @@ class SimParams:
     atoms_file_local: Path
     atoms_file_HPC: Path
     original_sim_dir: Path
+    potential_path: Path
     bench: int = None
     thermo_time: int = 10_000
     run_time: int = 1_500_000
     dt: float = 0.001
     species: str = "Fe"
-    potential_path: Path = Path("potentials/mendelev03.fs")
     thermo_freq: int = 100
     dump_freq: int = 1000
     restart_freq: int = 10_000
@@ -75,8 +75,6 @@ class SimParams:
     random_seed: int = field(default_factory=lambda: 1234)
 
     def __post_init__(self):
-
-        # 2. Benchmarking Logic: Override run times
         if self.bench == 0:
             self.thermo_time = 1
             self.run_time = 1
@@ -86,21 +84,24 @@ class SimParams:
 
     @property
     def case_name(self) -> str:
-        # Fixed: cast target_stress to int to avoid ST150.0 in folder names
         return f"diffusion_T{self.temperature}_ST{int(self.target_stress)}_R{self.radius}_N{self.random_seed}"
 
+def get_project_root() -> Path:
+    """Finds the 'prec_interactions' root directory."""
+    current_path = Path(__file__).resolve()
+    for parent in current_path.parents:
+        if parent.name == "prec_interactions":
+            return parent
+    return current_path.parent.parent
+
 def load_metadata(file_path: Path) -> dict:
-    file_path = Path(file_path)
     if not file_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {file_path}")
-        
-    if file_path.suffix in [".yaml", ".yml"]:
-        with open(file_path) as f:
+    
+    with open(file_path) as f:
+        if file_path.suffix in [".yaml", ".yml"]:
             return yaml.safe_load(f)
-    elif file_path.suffix == ".json":
-        with open(file_path) as f:
-            return json.load(f)
-    raise ValueError(f"Unsupported metadata format: {file_path.suffix}")
+        return json.load(f)
 
 def parse_arguments() -> SimParams:
     parser = argparse.ArgumentParser(description="MD simulation runner")
@@ -109,9 +110,11 @@ def parse_arguments() -> SimParams:
     parser.add_argument("--run_time", type=int, default=None)
     args = parser.parse_args()
 
-    meta = load_metadata(args.meta)
-    
-    # Map JSON keys exactly as they were saved in the previous script
+    # Resolve the meta path to absolute immediately
+    meta_path = Path(args.meta).resolve()
+    meta = load_metadata(meta_path)
+    root = get_project_root()
+
     return SimParams(
         radius=meta["Radius"],
         target_stress=meta["TargetStress"],
@@ -124,11 +127,13 @@ def parse_arguments() -> SimParams:
         num_sias=meta["NumSIAs"],
         box_bounds=meta["BoxBounds"],
         original_sim_dir=Path(meta["OriginalSimDir"]),
+        potential_path=root / "potentials" / "mendelev03.fs",
         bench=args.bench,
         run_time=args.run_time if args.run_time is not None else 1_500_000,
     )
 
 def init_paths(params: SimParams) -> dict:
+    # Ensure the output directory is created relative to the original simulation directory
     base = params.original_sim_dir.parent / params.case_name
     
     paths = {
@@ -141,74 +146,38 @@ def init_paths(params: SimParams) -> dict:
         "metadata": base / "run_config.yaml"
     }
     
-    # Create directories
     for p in paths.values():
-        if not p.suffix:
-            p.mkdir(parents=True, exist_ok=True)
+        if not p.suffix: p.mkdir(parents=True, exist_ok=True)
 
-    # Determine which source files to use based on where we are running
-    if "/home/Ethan" in str(Path.home()):
-        src_restart = params.restart_file_local
-        src_atoms = params.atoms_file_local
+    # REPLACED: Check existence rather than hardcoded usernames
+    if params.restart_file_local.exists():
+        src_restart, src_atoms = params.restart_file_local, params.atoms_file_local
     else:
-        src_restart = params.restart_file_HPC
-        src_atoms = params.atoms_file_HPC
+        src_restart, src_atoms = params.restart_file_HPC, params.atoms_file_HPC
 
-    # Copy files into the simulation's local inputs directory
+    # Copy files
     if src_restart.exists():
         shutil.copy(src_restart, paths["inputs"] / "input.restart")
-    else:
-        print(f"Warning: Restart source {src_restart} not found!")
-
     if src_atoms.exists():
         shutil.copy(src_atoms, paths["inputs"] / "atoms.txt")
-    else:
-        print(f"Warning: Atoms source {src_atoms} not found!")
 
-    return paths
+    return paths, src_restart, src_atoms
 
 def populate(lmp, filepath):
-    """
-    Reads coordinates from a text file and injects them as Type 1 atoms 
-    into the existing LAMMPS simulation.
-    """
-    # Load coordinates using numpy (handles the whitespace/lines automatically)
+    """Injects atoms from text file into the LAMMPS instance."""
     coords = np.loadtxt(filepath)
-    
-    print(f"--- Populating {len(coords)} SIAs into the simulation ---")
+    # Use rank 0 to print status
+    if MPI.COMM_WORLD.Get_rank() == 0:
+        print(f"--- Populating {len(coords)} SIAs ---")
     
     for row in coords:
         x, y, z = row
-        # Command: create_atoms <type> single <x> <y> <z>
-        # Note: We use f-strings to pass the coordinates directly to lmp.cmd
-        lmp.cmd.create_atoms(1, "single", x, y, z, "group", "siagrp")
-    
-    # Crucial: Re-evaluate the group 'mobgrp' so it includes the new atoms
-    # If the group was defined by 'type', this simple line refreshes it.
+        lmp.cmd.create_atoms(1, "single", x, y, z)
+
     lmp.cmd.group("mobgrp", "type", 1)
     lmp.cmd.group("all", "union", "fixgrp", "mobgrp")
 
-
-def run_simulation(params: SimParams, paths: dict, comm, dry_run=True) -> None:
-    # Choose which restart path to use: 
-    # If we are on your laptop (Ethan), use local. If on HPC, use HPC path.
-    if "/home/Ethan" in str(Path.home()):
-        actual_restart = params.restart_file_local
-    else:
-        actual_restart = params.restart_file_HPC
-
-    if dry_run:
-        print("\n=== DRY RUN MODE ===")
-        print(f"Target Case: {params.case_name}")
-        print(f"Source Restart: {actual_restart}")
-        print(f"Output Dir: {paths['base']}")
-        print("====================\n")
-        return
-    
-    if "/home/Ethan" in str(Path.home()):
-        actual_atoms = params.atoms_file_local
-    else:
-        actual_atoms = params.atoms_file_HPC
+def run_simulation(params: SimParams, paths: dict, restart_src: Path, atoms_src: Path, comm) -> None:
 
     # LAMMPS execution logic...
     from lammps import lammps
@@ -224,13 +193,13 @@ def run_simulation(params: SimParams, paths: dict, comm, dry_run=True) -> None:
     lmp.cmd.atom_modify("map", "yes")
     lmp.cmd.timestep(params.dt)
 
-    lmp.cmd.read_restart(str(actual_restart))
+    lmp.cmd.read_restart(str(paths["inputs"] / "input.restart"))
 
     # ===========================
     # Define the interatomic potential
     # ===========================
     lmp.cmd.pair_style("eam/fs")
-    lmp.cmd.pair_coeff("* *", params.potential_path, params.species, params.species, params.species, params.species)
+    lmp.cmd.pair_coeff("* *", str(params.potential_path), params.species, params.species, params.species, params.species)
 
     lmp.cmd.neighbor(2.0, "bin")
     lmp.cmd.neigh_modify("delay", 10, "check", "yes")
@@ -286,7 +255,7 @@ def run_simulation(params: SimParams, paths: dict, comm, dry_run=True) -> None:
     # ===========================
     # Populate
     # ===========================
-    populate(lmp, actual_atoms)   
+    populate(lmp, atoms_src)
 
     # ===========================
     # Minimize with SIAs
@@ -351,20 +320,28 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     
-    params = parse_arguments()
+    params = None
+    if rank == 0:
+        try:
+            params = parse_arguments()
+        except Exception as e:
+            print(f"Rank 0 Error: {e}")
+            comm.Abort()
+
+    params = comm.bcast(params, root=0)
     params.num_cores = comm.Get_size()
     
-    paths = init_paths(params)
+    # init_paths now returns the chosen sources
+    paths, chosen_restart, chosen_atoms = init_paths(params)
     
     if rank == 0:
-        # Save a copy of the finalized parameters used for this specific run
         meta_dict = asdict(params)
         for k, v in meta_dict.items():
             if isinstance(v, Path): meta_dict[k] = str(v)
         with open(paths["metadata"], "w") as f:
             yaml.dump(meta_dict, f)
 
-    run_simulation(params, paths, comm, dry_run=False)
+    run_simulation(params, paths, chosen_restart, chosen_atoms, comm)
 
 if __name__ == "__main__":
     main()
