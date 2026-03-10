@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=DIFF_RERUN
 #SBATCH --mail-user=eledmunds1@sheffield.ac.uk
-#SBATCH --time=00:05:00
-#SBATCH --mem=64G
-#SBATCH --ntasks=32
-#SBATCH --cpus-per-task=1
+#SBATCH --time=30:00:00
+#SBATCH --mem=128G
+#SBATCH --ntasks=96
+#SBATCH --cpus-per-task=2
 #SBATCH --output=slurm_shear/diff-%A_%a.out
-#SBATCH --array=0
-#SBATCH --exclude=node092,node113,node029,node034
+#SBATCH --array=0-7
+#SBATCH --exclude=node111
 
 mkdir -p slurm_shear
 
@@ -34,5 +34,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 # Point --meta to the metadata.json inside the selected case folder
 srun --export=ALL python simulations/02_diffusion.py \
     --meta "${SELECTED_DIR}/metadata.json" \
-    --run_time 1500000 \
-    --bench 0
+    --run_time 1500000
