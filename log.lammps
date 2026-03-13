@@ -1,4 +1,4 @@
 LAMMPS (22 Jul 2025)
 OMP_NUM_THREADS environment is not set. Defaulting to 1 thread.
   using 1 OpenMP thread(s) per MPI task
-log /home/Ethan/Projects/prec_interactions/data/rerun_results/diffusion_T700_ST150_R30_N1234/logs/setup.log
+log /home/Ethan/Projects/prec_interactions/data/shear/test_T800_S1e+07_N4383/logs/log.lammps

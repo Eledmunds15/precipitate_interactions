@@ -195,7 +195,7 @@ def run_simulation(params: SimParams, paths: dict, comm) -> None:
     
     lmp.command("min_style cg")
     lmp.command("minimize 1e-4 1e-6 5000 10000")
-    lmp.command(f"write_dump all custom {str(paths['output'] / 'minimized_initial.dump')} id type x y z c_pe c_ke c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6]")
+    lmp.command(f"write_dump all custom {str(paths['output'] / 'minimized_initial.dump')} id type x y z vx vy vz fx fy fz  c_pe c_ke c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6]")
 
     # Populate with SIAs from the local inputs directory
     populate(lmp, str(paths["inputs"] / "atoms.txt"))
@@ -206,16 +206,16 @@ def run_simulation(params: SimParams, paths: dict, comm) -> None:
     lmp.command("minimize 1e-4 1e-6 2000 10000")
     lmp.command("min_style cg")
     lmp.command("minimize 1e-4 1e-6 5000 10000")
-    lmp.command(f"write_dump all custom {str(paths['output'] / 'minimized_final.dump')} id type x y z c_pe c_ke c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6]")
+    lmp.command(f"write_dump all custom {str(paths['output'] / 'minimized_final.dump')} id type x y z vx vy vz fx fy fz c_pe c_ke c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6]")
 
     # Setup Simulation Outputs
     lmp.command("reset_timestep 0")
     lmp.command(f"log {str(paths['logs'] / 'diffusion.log')}")
     lmp.command(f"thermo {params.thermo_freq}")
-    lmp.command("thermo_style custom step temp pe pxx pyy pzz c_mobtemp c_mobstressXX c_mobstressYY")
+    lmp.command("thermo_style custom step temp pe pxx pyy pzz pxy pyz pxz c_mobtemp c_mobpetot c_mobketot c_mobstressXX c_mobstressYY c_mobstressZZ c_mobstressXY c_mobstressYZ c_mobstressXZ")
     lmp.command("thermo_modify temp mobtemp")
 
-    lmp.command(f"dump dump all custom {params.dump_freq} {str(paths['dump'] / 'dump_*.lammpstrj')} id type x y z c_pe c_stress[1]")
+    lmp.command(f"dump dump all custom {params.dump_freq} {str(paths['dump'] / 'dump_*.lammpstrj')} id type x y z c_pe")
     lmp.command(f"restart {params.restart_freq} {str(paths['restart'] / 'out.*.restart')}")
 
     # Run Sequence
