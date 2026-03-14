@@ -109,7 +109,7 @@ def prepare_outputs(lmp, params, paths):
     # Dump data
     lmp.command(
         f"dump dump all custom 1000 {paths['dump']}/dump_*.lammpstrj "
-        "id type x y z"
+        "id type x y z vx vy vz"
     )
 
     lmp.command(f"restart 1000 {paths['restart'] / '*.restart'}")
@@ -121,7 +121,10 @@ def thermalise(lmp, params, paths):
     lmp.command(f"fix 1 mobgrp nvt temp {params.temperature} {params.temperature} {params.dt*100.0}")
     lmp.command(f"fix_modify 1 temp mobtemp")
 
-    lmp.command(f"fix 2 fixgrp setforce NULL 0.0 NULL")
+    lmp.command(f"fix 2 precgrp setforce 0.0 0.0 0.0")
+    lmp.command(f"fix 3 topgrp setforce NULL 0.0 NULL")
+    lmp.command(f"fix 3 botgrp setforce NULL 0.0 NULL")
+
     lmp.command(f"velocity fixgrp set 0.0 0.0 0.0")
 
     lmp.command(f"velocity mobgrp create {params.temperature} {params.random_seed} mom yes rot yes dist gaussian")
@@ -153,7 +156,8 @@ def strain_calculations(lmp, params, paths):
 
 def ramp(lmp, params, paths):
 
-    lmp.command(f"fix 2 fixgrp setforce 0.0 0.0 0.0")
+    lmp.command(f"fix 3 topgrp setforce 0.0 0.0 0.0")
+    lmp.command(f"fix 4 botgrp setforce 0.0 0.0 0.0")
 
     lmp.command("velocity topgrp set v_ramp_velocity_top 0.0 0.0")
     lmp.command("velocity botgrp set 0.0 0.0 0.0")
