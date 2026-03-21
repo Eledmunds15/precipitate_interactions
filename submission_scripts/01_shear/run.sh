@@ -26,7 +26,6 @@ SCRIPT_PATH="/mnt/parscratch/users/mtp24ele/private/prec_interactions/simulation
 POTENTIAL_PATH="/mnt/parscratch/users/mtp24ele/private/prec_interactions/potentials/mendelev03.fs"
 
 INPUT_FILE_DIR="/mnt/parscratch/users/mtp24ele/private/prec_interactions/input"
-INPUT_FILES=("Fe_E111_110_R20.lmp" "Fe_E111_110_R30.lmp" "Fe_E111_110_R40.lmp")
 RADIUSES=(20 30 40)
 
 # ==========================
@@ -37,11 +36,14 @@ STRAIN_RATE=1e7
 RUNTIME=1500000
 RANDOM_SEED=1000
 
+THERMOTIME=20000
+RAMPTIME=20000
+
 # --------------------------
 # Select array-specific input
 # --------------------------
-INPUT_FILE=${INPUT_FILES[$SLURM_ARRAY_TASK_ID]}
 RADIUS=${RADIUSES[$SLURM_ARRAY_TASK_ID]}
+INPUT_FILE="Fe_E111_110_R${RADIUS}.lmp"
 
 # --------------------------
 # Simulation name
@@ -56,6 +58,8 @@ srun --export=ALL python "${SCRIPT_PATH}" \
     --strain_rate ${STRAIN_RATE} \
     --input "${INPUT_FILE_DIR}/${INPUT_FILE}" \
     --potential "${POTENTIAL_PATH}" \
+    --thermo_time ${THERMOTIME} \
+    --ramp_time ${RAMPTIME}
     --run_time ${RUNTIME} \
     --random_seed ${RANDOM_SEED} \
     --name ${NAME}

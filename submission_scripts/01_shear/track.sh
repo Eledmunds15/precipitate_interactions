@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=PREC_SHEAR_TRACKING
 #SBATCH --mail-user=eledmunds1@sheffield.ac.uk
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --mem=64G
 #SBATCH --ntasks=16
 #SBATCH --cpus-per-task=1
@@ -25,7 +25,7 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 SCRIPT_PATH="/mnt/parscratch/users/mtp24ele/private/prec_interactions/dislo_tracking/01_shear/run.py"
 
 INPUT_FILE_DIR="/mnt/parscratch/users/mtp24ele/private/prec_interactions/data/shear"
-INPUT_FILES=("shear_T800_SR1e7_R20_N1000"  "shear_T800_SR1e7_R30_N1000"  "shear_T800_SR1e7_R40_N1000")
+INPUT_FILES=("shear_T800_SR1e8_R20_N1000" "shear_T800_SR1e7_R20_N1000"  "shear_T800_SR1e7_R30_N1000"  "shear_T800_SR1e7_R40_N1000")
 
 # --------------------------
 # Select array-specific input

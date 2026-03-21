@@ -15,9 +15,9 @@ def run_simulation(params, paths, comm):
     computes(lmp, params, paths)
     prepare_outputs(lmp, params, paths)
     thermalise(lmp, params, paths)
-    strain_calculations(lmp, params, paths)
+    strain_velocity = strain_calculations(lmp, params, paths)
     ramp(lmp, params, paths)
-    shear(lmp, params, paths)
+    shear(lmp, params, paths, strain_velocity)
 
 def setup(lmp, params, paths, comm):
     
@@ -65,6 +65,8 @@ def computes(lmp, params, paths):
     lmp.command(f"compute pe all pe/atom")
     lmp.command(f"compute ke all ke/atom")
 
+    lmp.command("compute top_vel topgrp reduce ave vx vy vz") # To get the average velocity of atoms in the top (moving) slab of atoms
+
     stress_components = ["XX", "YY", "ZZ", "XY", "YZ", "XZ"]
 
     for i, comp in enumerate(stress_components):
@@ -101,7 +103,7 @@ def prepare_outputs(lmp, params, paths):
         "pxx pyy pzz pxy pyz pxz " \
         "c_mobstressXX c_mobstressYY c_mobstressZZ " \
         "c_mobstressXY c_mobstressYZ c_mobstressXZ " \
-        "v_effective_stressXY"
+        "v_effective_stressXY c_top_vel[1]"
     )
     lmp.command(f"thermo 100")
     lmp.command(f"thermo_modify temp mobtemp")
@@ -123,7 +125,7 @@ def thermalise(lmp, params, paths):
 
     lmp.command(f"fix 2 precgrp setforce 0.0 0.0 0.0")
     lmp.command(f"fix 3 topgrp setforce NULL 0.0 NULL")
-    lmp.command(f"fix 3 botgrp setforce NULL 0.0 NULL")
+    lmp.command(f"fix 4 botgrp setforce NULL 0.0 NULL")
 
     lmp.command(f"velocity fixgrp set 0.0 0.0 0.0")
 
@@ -143,8 +145,8 @@ def strain_calculations(lmp, params, paths):
     ymin, ymax = box_min[1], box_max[1]
     zmin, zmax = box_min[2], box_max[2]
 
-    box_height = ymax-ymin
-    strain_velocity = params.strain_rate * box_height * 1e-12
+    strain_velocity = params.strain_rate * (ymax-ymin) * 1e-12
+    print(f"target strain velocity is: {strain_velocity}", flush=True)
 
     # Now we set them to be lammps variables so they are still accessible later on
     lmp.command(f"variable ramp_timestep equal (step-{params.thermo_time})") # Create ramp timestep
@@ -152,23 +154,21 @@ def strain_calculations(lmp, params, paths):
     lmp.command(f"variable ramp_velocity_top equal (({strain_velocity}*v_ramp_timestep)/{params.ramp_time})") #
     lmp.command(f"variable shear_velocity_top equal {strain_velocity}") # 
 
-    return None
+    return strain_velocity
 
 def ramp(lmp, params, paths):
 
-    lmp.command(f"fix 3 topgrp setforce 0.0 0.0 0.0")
-    lmp.command(f"fix 4 botgrp setforce 0.0 0.0 0.0")
-
-    lmp.command("velocity topgrp set v_ramp_velocity_top 0.0 0.0")
-    lmp.command("velocity botgrp set 0.0 0.0 0.0")
+    lmp.command("fix top_move topgrp move variable NULL NULL NULL v_ramp_velocity_top NULL NULL")
+    lmp.command("fix bot_hold botgrp move linear 0.0 0.0 0.0")
 
     lmp.command(f"run {params.ramp_time}")
-
     return None
 
-def shear(lmp, params, paths):
+def shear(lmp, params, paths, strain_velocity):
 
-    lmp.command("velocity topgrp set v_shear_velocity_top 0.0 0.0")
-    lmp.command("velocity botgrp set 0.0 0.0 0.0")
+    lmp.command("unfix top_move")
+
+    lmp.command(f"fix bot_hold botgrp move linear {strain_velocity} 0.0 0.0")
 
     lmp.command(f"run {params.run_time}")
+    return None
